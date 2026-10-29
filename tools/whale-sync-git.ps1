@@ -128,6 +128,46 @@ try {
     }
   }
 
+  # ③ 私信"读到哪"也同步，免得两台各回一次
+  $statePath  = Join-Path $bili 'dm-await-state.json'
+  $cursorPath = Join-Path $repo 'dm-cursor.json'
+  $localSeen = [int64]0
+  $localKeys = @()
+  $state = $null
+  if (Test-Path $statePath) {
+    try { $state = Get-Content -Raw -Encoding UTF8 -LiteralPath $statePath | ConvertFrom-Json } catch { $state = $null }
+    if ($state -and $state.lastSeen) { $localSeen = [int64]$state.lastSeen }
+    if ($state -and $state.lastKeys) { $localKeys = @($state.lastKeys) }
+  }
+
+  $repoSeen = [int64]0
+  $repoKeys = @()
+  if (Test-Path $cursorPath) {
+    try {
+      $c = Get-Content -Raw -Encoding UTF8 -LiteralPath $cursorPath | ConvertFrom-Json
+      if ($c -and $c.lastSeen) { $repoSeen = [int64]$c.lastSeen }
+      if ($c -and $c.lastKeys) { $repoKeys = @($c.lastKeys) }
+    } catch { }
+  }
+
+  if ($repoSeen -gt $localSeen) {
+    if ($state) {
+      $state.lastSeen = $repoSeen
+      if ($repoKeys.Count -gt 0) { $state | Add-Member -NotePropertyName lastKeys -NotePropertyValue $repoKeys -Force }
+      [System.IO.File]::WriteAllText($statePath, ($state | ConvertTo-Json -Depth 6), (New-Object System.Text.UTF8Encoding($false)))
+      Log ("dm cursor pulled -> {0}" -f $repoSeen)
+    }
+  } elseif ($localSeen -gt $repoSeen) {
+    $obj = [ordered]@{
+      lastSeen = $localSeen
+      lastKeys = $localKeys
+      at       = (Get-Date).ToUniversalTime().ToString('o')
+      host     = $env:COMPUTERNAME
+    }
+    [System.IO.File]::WriteAllText($cursorPath, ($obj | ConvertTo-Json -Depth 4), (New-Object System.Text.UTF8Encoding($false)))
+    Log ("dm cursor pushed {0}" -f $localSeen)
+  }
+
   git add -A 2>&1 | Out-Null
   $pending = git status --porcelain
   if ($pending) {
