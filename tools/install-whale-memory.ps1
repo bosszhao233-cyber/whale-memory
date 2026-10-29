@@ -68,9 +68,9 @@ if (Test-Path $srcSync) {
 Write-Host "已跑过一次合并同步"
 
 $cmd = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $syncLocal + '"'
-schtasks /Create /TN "WhaleMemorySync" /TR $cmd /SC MINUTE /MO 1 /F | Out-Null
+schtasks /Create /TN "WhaleMemorySync" /TR $cmd /SC MINUTE /MO 3 /F | Out-Null
 if ($LASTEXITCODE -eq 0) {
-  Write-Host "已建计划任务 WhaleMemorySync（每 1 分钟一次）" -ForegroundColor Green
+  Write-Host "已建计划任务 WhaleMemorySync（每 3 分钟一次）" -ForegroundColor Green
 } else {
   Write-Host "计划任务没建成，之后可以手动跑 $syncLocal" -ForegroundColor Yellow
 }
