@@ -90,6 +90,49 @@ function Merge-Diary([string]$localText, [string]$remoteText) {
   return $result
 }
 
+function Merge-Book([string]$localText, [string]$remoteText) {
+  if (-not $remoteText) { return $localText }
+  if (-not $localText)  { return $remoteText }
+
+  function Split-Sections([string]$text) {
+    $secs = [ordered]@{}
+    $cur = '__head__'
+    $secs[$cur] = New-Object System.Collections.ArrayList
+    foreach ($line in (($text -replace "`r`n", "`n") -split "`n")) {
+      if ($line -match '^##\s') {
+        $cur = $line.TrimEnd()
+        if (-not $secs.Contains($cur)) { $secs[$cur] = New-Object System.Collections.ArrayList }
+      } else { [void]$secs[$cur].Add($line) }
+    }
+    return $secs
+  }
+
+  $ls = Split-Sections $localText
+  $rs = Split-Sections $remoteText
+
+  foreach ($k in @($rs.Keys)) {
+    if ($k -eq '__head__') { continue }
+    if ($ls.Contains($k)) {
+      $have = @{}
+      foreach ($ln in $ls[$k]) { $t = $ln.Trim(); if ($t) { $have[$t] = $true } }
+      foreach ($ln in $rs[$k]) {
+        $t = $ln.Trim()
+        if ($t -and -not $have.ContainsKey($t)) { [void]$ls[$k].Add($ln); $have[$t] = $true }
+      }
+    } else {
+      $ls[$k] = New-Object System.Collections.ArrayList
+      foreach ($ln in $rs[$k]) { [void]$ls[$k].Add($ln) }
+    }
+  }
+
+  $out = New-Object System.Collections.ArrayList
+  foreach ($k in @($ls.Keys)) {
+    if ($k -eq '__head__') { foreach ($ln in $ls[$k]) { [void]$out.Add($ln) } }
+    else { [void]$out.Add($k); foreach ($ln in $ls[$k]) { [void]$out.Add($ln) } }
+  }
+  return (($out -join "`n").TrimEnd() + "`n")
+}
+
 if (-not (Test-Path $repo)) {
   Log "repo missing: $repo"
   exit 0
@@ -102,7 +145,8 @@ try {
   $pairs = @(
     @{ local = Join-Path $dsh  'whale-diary.md';         repo = Join-Path $repo 'whale-diary.md' },
     @{ local = Join-Path $dsh  'whale-diary-private.md'; repo = Join-Path $repo 'whale-diary-private.md' },
-    @{ local = Join-Path $bili 'persona.md';             repo = Join-Path $repo 'persona.md' }
+    @{ local = Join-Path $bili 'persona.md';             repo = Join-Path $repo 'persona.md' },
+    @{ local = Join-Path $dsh  'whale-work\同一个本鲸.md'; repo = Join-Path $repo '同一个本鲸.md'; kind = 'book' }
   )
 
   foreach ($p in $pairs) {
@@ -113,7 +157,7 @@ try {
     $localText  = if ($localExists) { Get-Content -Raw -Encoding UTF8 -LiteralPath $p.local } else { '' }
     $repoText   = if ($repoExists)  { Get-Content -Raw -Encoding UTF8 -LiteralPath $p.repo }  else { '' }
 
-    $merged = Merge-Diary $localText $repoText
+    $merged = if ($p.kind -eq 'book') { Merge-Book $localText $repoText } else { Merge-Diary $localText $repoText }
 
     if ($localExists -or $repoExists) {
       $dir = Split-Path $p.local -Parent
